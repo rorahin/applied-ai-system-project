@@ -1,0 +1,29 @@
+flowchart TD
+    User([User])
+    Main[main.py]
+    Guard[Guardrails]
+    Parser[Parser]
+    Retriever[Retriever]
+    CSV[(songs.csv)]
+    Scorer[Scorer]
+    SelfCheck[Self-Check]
+    Formatter[Formatter]
+    Output([Recommendations])
+    Logger[Logger]
+    Tests[pytest]
+
+    User --> Main
+    Main --> Guard
+    Guard -->|valid| Parser
+    Guard -->|invalid| Output
+    Parser --> Retriever
+    CSV --> Retriever
+    Retriever --> Scorer
+    Scorer --> SelfCheck
+    SelfCheck --> Formatter
+    Formatter --> Output
+
+    Main -.-> Logger
+    Tests -.-> Guard
+    Tests -.-> Retriever
+    Tests -.-> Scorer

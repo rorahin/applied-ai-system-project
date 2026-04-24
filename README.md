@@ -1,17 +1,179 @@
-# 🎵 Music Recommender Simulation
+# Applied AI Music Recommendation System
 
 ## Project Summary
 
-In this project you will build and explain a small music recommender system.
+An explainable applied AI music recommender that demonstrates three advanced AI features:
+retrieval-style pre-filtering, an agentic multi-step workflow, and a reliability layer with
+guardrails, logging, and automated testing.
 
-Your goal is to:
+The system accepts a natural-language music preference (e.g. *"I want nostalgic rock with high
+energy"*), parses it into a structured profile, retrieves candidate songs from a local catalog,
+scores and ranks them with a transparent weighted formula, and explains every recommendation.
 
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
+---
 
-Replace this paragraph with your own summary of what your version does.
+## Quick Start (Applied AI System)
+
+### Setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # Mac / Linux
+# .venv\Scripts\activate    # Windows
+
+pip install -r requirements.txt
+```
+
+### Run the interactive recommender
+
+```bash
+python main.py
+```
+
+Example prompt: `I want nostalgic rock with high energy`
+
+### Run all tests
+
+```bash
+pytest
+```
+
+Expected: **139 passed**
+
+---
+
+## How the Applied AI System Works
+
+### Pipeline (6 steps)
+
+```text
+User request
+    │
+    ▼
+1. Validate input (guardrails)
+    │
+    ▼
+2. Parse natural language → UserProfile
+    │
+    ▼
+3. RAG-style retrieval: exact / partial / fallback
+    │
+    ▼
+4. Weighted scoring + explanations
+    │
+    ▼
+5. Self-check (confidence, warnings, flags)
+    │
+    ▼
+6. Formatted output with scores and Why: explanations
+```
+
+### Retrieval modes
+
+| Mode | When used |
+|------|-----------|
+| `EXACT` | Genre AND mood both specified and matched |
+| `PARTIAL` | At least one of genre, mood, or decade matched |
+| `FALLBACK` | Nothing matched, or request was vague |
+
+### Scoring weights
+
+| Dimension  | Weight |
+|------------|--------|
+| Genre      | 30 %   |
+| Mood       | 30 %   |
+| Energy     | 20 %   |
+| Popularity | 10 %   |
+| Decade     | 10 %   |
+
+Unspecified dimensions receive a neutral 0.5 contribution so they do not unfairly penalise any
+song.
+
+### Confidence labels
+
+| Score | Label |
+|-------|-------|
+| ≥ 0.75 | HIGH |
+| ≥ 0.50 | MEDIUM |
+| < 0.50 | LOW |
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `main.py` | Interactive entry point |
+| `src/agent.py` | Agentic controller (6-step pipeline) |
+| `src/retrieval.py` | RAG-style retrieval + CSV loader |
+| `src/recommender_engine.py` | Weighted scoring and ranking |
+| `src/guardrails.py` | Input validation and deduplication |
+| `src/logger.py` | Console + file logging (`logs/app.log`) |
+| `src/song.py` | Song dataclass |
+| `src/user_profile.py` | UserProfile dataclass |
+| `data/songs.csv` | 20-song catalog |
+| `tests/test_functionality.py` | 43 functionality tests |
+
+---
+
+## System Design and Architecture
+
+Full architecture details, component reference, and export instructions are in
+[docs/architecture.md](docs/architecture.md).
+
+```mermaid
+flowchart TD
+    Human(["👤 Human User\n(natural language request)"])
+    MainPy["main.py\nentry point"]
+    Guard["Guardrails\nsrc/guardrails.py"]
+    Parse["Request Parser\nsrc/agent.py → parse_request()\n→ UserProfile"]
+    CSV[("data/songs.csv\n20-song catalog")]
+    Retrieve["RAG-style Retrieval\nsrc/retrieval.py\nEXACT · PARTIAL · FALLBACK"]
+    Score["Scoring & Ranking\nsrc/recommender_engine.py\ngenre 30% · mood 30%\nenergy 20% · pop 10% · decade 10%"]
+    SelfCheck["Self-Check\nsrc/agent.py → self_check()"]
+    Format["Output Formatter\nsrc/agent.py → format_results()"]
+    Output(["📋 Ranked Recommendations\nScore · Confidence · Why"])
+    Logger["Logger\nsrc/logger.py\nconsole + logs/app.log"]
+    Tests["pytest  139 tests\ntests/test_functionality.py\ntests/test_recommender.py"]
+
+    Human -->|"text request"| MainPy
+    MainPy --> Guard
+    Guard -->|"invalid → error"| Output
+    Guard -->|"valid"| Parse
+    Parse -->|"UserProfile"| Retrieve
+    CSV -->|"load · validate · deduplicate"| Retrieve
+    Retrieve -->|"candidates + mode"| Score
+    Score -->|"Recommendation list"| SelfCheck
+    SelfCheck -->|"flags / warnings"| Format
+    Score -->|"ranked results"| Format
+    Format --> Output
+    Output -->|"reads"| Human
+
+    MainPy -.->|"logged"| Logger
+    Guard -.->|"logged"| Logger
+    Retrieve -.->|"logged"| Logger
+    Score -.->|"logged"| Logger
+
+    Tests -.->|"verifies"| Guard
+    Tests -.->|"verifies"| Score
+    Tests -.->|"verifies"| Retrieve
+    Tests -.->|"verifies"| Format
+```
+
+> To export this diagram as a PNG, see [docs/architecture.md — Exporting to PNG](docs/architecture.md#exporting-to-png).
+
+---
+
+## Original Music Recommender Simulation
+
+The original simulation project (9-feature weighted scoring, 5 scoring modes) is preserved in
+`src/recommender.py` and `src/main.py`. Run it with:
+
+```bash
+python -m src.main
+```
+
+Its 96 tests remain in `tests/test_recommender.py` and continue to pass alongside the new tests.
+
+---
 
 ---
 
