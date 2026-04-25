@@ -289,6 +289,137 @@ python3 tests/run_tests.py
 
 ---
 
+## Reliability and Evaluation
+
+This section documents how the system proves it works — through automated tests, transparent
+scoring, input validation, structured logging, and a self-check step that inspects its own output
+before returning it to the user.
+
+---
+
+### A. Automated Testing
+
+**Framework:** pytest
+
+**Total tests:** 139 — run with `pytest` or `python3 tests/run_tests.py`
+
+The suite is split across two files:
+
+- `tests/test_recommender.py` — 96 tests from the original simulation baseline; verify the core
+  scoring formula, UserProfile construction, and all five scoring modes (BALANCED, GENRE_FIRST,
+  MOOD_FIRST, ENERGY_FOCUSED, DISCOVERY)
+- `tests/test_functionality.py` — 43 tests for the new Applied AI layer; cover:
+  - **Input validation** — empty strings, whitespace-only input, and too-short requests are
+    rejected before reaching the pipeline
+  - **Scoring logic** — weighted formula produces scores in [0.0, 1.0]; genre match outranks
+    genre mismatch; confidence labels map to the correct score thresholds
+  - **Ranking correctness** — results are returned in descending score order; ties are broken
+    consistently
+  - **Explanations** — every recommendation includes a non-empty "Why" string; genre and mood
+    matches are named explicitly
+  - **Edge cases** — empty input, unknown genre, vague requests, and duplicate songs are all
+    handled without raising an exception
+
+All tests use an in-memory fixture (temporary CSV) so they are isolated from the real catalog and
+pass deterministically regardless of catalog contents.
+
+---
+
+### B. Confidence Scoring
+
+Every recommendation includes a numeric score and a human-readable confidence label:
+
+| Label  | Score threshold | Meaning                                           |
+|--------|-----------------|---------------------------------------------------|
+| HIGH   | ≥ 0.75          | Strong match across most preference dimensions    |
+| MEDIUM | ≥ 0.50          | Partial match — some dimensions aligned           |
+| LOW    | < 0.50          | Weak match — few or no preference signals matched |
+
+The score is computed by `score_song()` in [src/recommender_engine.py](src/recommender_engine.py)
+using a five-dimension weighted formula (genre 30%, mood 30%, energy 20%, popularity 10%, decade
+10%). Unspecified dimensions receive a neutral 0.5 contribution so they do not unfairly penalize
+any song.
+
+Confidence labels appear in every output line (`Confidence: HIGH / MEDIUM / LOW`) so users can
+immediately see how well each result matched their request — not just a raw number. This makes the
+system's uncertainty visible rather than hidden.
+
+---
+
+### C. Guardrails and Error Handling
+
+Guardrails in [src/guardrails.py](src/guardrails.py) intercept bad input at two points:
+
+- **Empty input** — `validate_request()` rejects empty strings and whitespace-only requests
+  before they reach the pipeline, returning a clean `[Input Error]` message
+- **Too-short input** — requests under 3 characters are rejected with an explanatory message
+- **Invalid song data** — `validate_song()` checks each CSV row for missing required fields,
+  out-of-range energy values (must be [0.0, 1.0]), and non-integer popularity values; bad rows
+  are skipped at load time
+- **Unknown genre / mood** — `check_genre_support()` and `check_mood_support()` normalize input
+  against catalog vocabulary; unrecognized values are silently treated as unspecified rather than
+  crashing the parser
+- **Vague input** — when no genre, mood, energy, or decade is extracted from the request, the
+  profile is marked `is_vague=True` and FALLBACK mode activates; results are returned ranked by
+  popularity alone
+- **Duplicate songs** — `deduplicate_songs()` removes songs with identical (title, artist) pairs
+  at load time; the first occurrence is preserved and a warning is logged for each duplicate removed
+
+None of these cases raise an exception. The system always returns a string.
+
+---
+
+### D. Logging
+
+The logger in [src/logger.py](src/logger.py) writes to two destinations simultaneously:
+
+| Destination     | Level | Format                                    | Purpose                              |
+|-----------------|-------|-------------------------------------------|--------------------------------------|
+| Console stdout  | INFO  | `[LEVEL] message`                         | Visible during interactive use       |
+| `logs/app.log`  | DEBUG | `timestamp [LEVEL] message`               | Full trace for post-run debugging    |
+
+Every pipeline stage emits a log entry: request received, parse result, retrieval mode and count,
+ranking result, self-check flags, and run complete. The `logs/` directory is created automatically
+on first run if it does not exist.
+
+Log entries make it possible to reconstruct exactly what the system did on any given request —
+which retrieval mode fired, how many candidates were scored, and which self-check flags were raised
+— without re-running the request.
+
+---
+
+### E. Self-Check / Agent Evaluation
+
+After ranking, `AppliedMusicAgent.self_check()` in [src/agent.py](src/agent.py) inspects its
+own output and attaches warning or note flags before returning results to the user:
+
+- **Fewer than 3 results** → `WARNING: Only N result(s) found — catalog may be too small`
+- **All results have LOW confidence** → `WARNING: All results have LOW confidence`
+- **Top score below 0.50** → `WARNING: Best match score is X.XX — no strong matches found`
+- **FALLBACK + vague request** → `NOTE: Request was vague — showing a diverse fallback selection`
+- **FALLBACK + specific request** → `NOTE: No catalog songs matched — showing fallback recommendations`
+- **Preferred genre absent from top results** → `NOTE: Genre 'X' is not represented in top results`
+- **Preferred mood absent from top results** → `NOTE: Mood 'X' is not represented in top results`
+
+These flags appear at the top of every recommendation block. The system surfaces its own
+uncertainty explicitly rather than returning results that look confident but are not.
+
+---
+
+### Test Results
+
+![139 out of 139 tests passed](assets/step-4.png)
+
+### Reliability Summary
+
+- 139 out of 139 tests passed
+- The system handles empty, vague, and unknown inputs without crashing
+- Confidence scores (HIGH / MEDIUM / LOW) provide transparency into recommendation quality
+- Reliability improved after adding guardrails, deduplication, and self-check logic
+- Logging to both console and `logs/app.log` makes every pipeline run fully traceable
+
+---
+
 ## Reflection
 
 Building this system made the gap between "a script that recommends songs" and "a system with
@@ -313,3 +444,122 @@ not know. When a request is vague, the agent says so. When confidence is low, it
 catalog is too small to satisfy a query, it says so. That kind of self-awareness is what makes
 applied AI systems trustworthy in practice — and it only exists because the pipeline was designed
 to expose it, and the tests were written to verify it.
+
+---
+
+## Reflection and Ethics
+
+### 1. Limitations and Biases
+
+**Small catalog size.**
+The catalog contains 20 songs. Result diversity is capped by catalog size, not by the algorithm.
+A query for "chill lofi from the 2010s" returns at most 2 results — not because the system
+failed, but because only 2 such songs exist. This is surfaced explicitly via the self-check
+warning, but it is still a real constraint.
+
+**Content-based filtering has no memory.**
+The system matches song attributes to stated preferences. It has no user history, no play counts,
+and no cross-user signals. It cannot learn that a user dislikes a specific artist, or that their
+mood preferences shift over time. Every request is treated as if it came from a new user.
+
+**Binary genre and mood matching.**
+Genre and mood matches are exact string comparisons. "Rock" and "indie rock" score identically to
+a genre mismatch — there is no partial credit for adjacent categories. This can surface
+unintuitive rankings when a user's preferred genre is close but not identical to catalog entries.
+
+**Keyword parser coverage.**
+The parser maps user language to structured preferences using fixed keyword tables. Phrasing not
+in the tables is silently ignored. A request like "something to study to at midnight" may extract
+nothing useful and fall through to FALLBACK mode even though the intent is clear to a human reader.
+
+**Filter bubble and popularity bias.**
+FALLBACK mode ranks entirely by popularity. Popular songs therefore appear in every fallback
+result set regardless of user intent. Over repeated use, this would systematically over-expose
+the same high-popularity songs to users with vague or unusual preferences.
+
+**No real personalization.**
+There is no feedback loop. The system cannot improve its recommendations based on what a user
+accepted or skipped. Confidence scores reflect catalog fit, not actual user satisfaction.
+
+---
+
+### 2. Potential Misuse and Prevention
+
+**Risks:**
+
+- Confidence labels (HIGH / MEDIUM / LOW) could be read as objective quality judgments rather
+  than what they are: a measure of how well a song's attributes matched the stated preferences.
+  A LOW-confidence result is not a bad song — it is a song that did not fit the parsed profile.
+- A biased catalog — one that overrepresents certain genres, decades, or popularity tiers —
+  produces biased recommendations regardless of how well the scoring formula works. The algorithm
+  cannot correct for gaps in the data it runs on.
+- Popularity-weighted fallback could systematically disadvantage niche genres. Users who prefer
+  less-popular styles receive lower-quality fallback results than users who prefer mainstream music.
+
+**Mitigations already in place:**
+
+- Every recommendation includes a "Why" explanation that names which dimensions matched and which
+  did not. Users can see the reasoning rather than just the result.
+- Confidence labels are always displayed and are defined by a transparent threshold (≥ 0.75 = HIGH,
+  ≥ 0.50 = MEDIUM, < 0.50 = LOW), not hidden inside an opaque model.
+- The retrieval mode (EXACT / PARTIAL / FALLBACK) is shown in every output so users know when
+  they are seeing a best-effort result rather than a targeted one.
+- Guardrails reject malformed input before it can produce misleading output.
+- Logging creates a full audit trail of every pipeline decision.
+
+**Further improvements that would reduce risk:**
+
+- Expanding the catalog to reduce the influence of any single song or genre cluster.
+- Adding diversity enforcement so that fallback results span multiple genres rather than
+  defaulting to the same popular songs.
+- Explaining confidence thresholds directly in the output so users understand what the labels mean.
+
+---
+
+### 3. Reliability Surprises During Testing
+
+**Vague inputs required more design than expected.**
+Initially, requests that extracted no useful preferences simply returned low-scoring results with
+no explanation. Adding explicit vague detection, FALLBACK mode, and the self-check NOTE flag
+required revisiting the agent's control flow — it was not a one-line fix.
+
+**Catalog size became a reliability signal.**
+The self-check warning for fewer than 3 results was added specifically because test runs on
+specific queries kept returning 1–2 results that looked like failures but were actually correct
+behavior given the catalog. The warning turned a confusing output into an informative one.
+
+**Scoring weights dominated rankings more than expected.**
+Because genre and mood together account for 60% of the score, a song with a genre match and
+mood mismatch consistently outranked songs with no genre match but better energy and decade fits.
+This is correct by design, but it made some test cases unintuitive to reason about before the
+weight distribution was internalized.
+
+**Guardrails and self-check improved result trustworthiness significantly.**
+Before adding `validate_request()` and `self_check()`, the system returned results silently for
+every input — empty strings, single characters, and nonsense requests all produced output that
+looked legitimate. Guardrails and self-check are what make the difference between a system that
+produces output and a system that produces trustworthy output.
+
+**Automated tests caught edge cases that manual testing missed.**
+The deduplication tests, in particular, surfaced a design question (load-time vs. query-time
+deduplication) that would have been easy to overlook. Writing tests for expected behavior on
+edge cases made the behavior explicit and the decision auditable.
+
+---
+
+### 4. AI Collaboration
+
+**Helpful suggestion — agentic pipeline structure.**
+AI helped identify the multi-step agentic pattern early: validate input, parse request, retrieve
+candidates, score and rank, self-check output, format results. Structuring the system this way
+created clean separation between steps, made each stage independently testable, and enabled the
+self-check step to inspect its own output before returning it. Without that structure, the system
+would likely have been a single scoring function with no visibility into pipeline state.
+
+**Flawed suggestion — architecture diagram.**
+AI initially generated an architecture diagram that was too complex for a project screenshot. It
+included low-level implementation details, multiple nested boxes, and component labels that
+reflected internal class names rather than user-facing pipeline steps. The diagram was accurate
+but unreadable at the size it would appear in a README. It had to be redrawn as a simpler
+high-level flow that matched what someone reading the project for the first time actually needs
+to understand.
