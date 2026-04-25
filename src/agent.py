@@ -4,6 +4,8 @@ from src.user_profile import UserProfile
 from src.retrieval import load_songs, retrieve_candidates
 from src.recommender_engine import rank_songs, Recommendation, CONFIDENCE_THRESHOLD
 from src.guardrails import validate_request, check_genre_support, check_mood_support
+from src.knowledge_retrieval import retrieve_snippets, apply_knowledge_hints
+from src.specialization import apply_style, validate_style
 from src.logger import setup_logger
 
 logger = setup_logger()
@@ -100,11 +102,17 @@ class AppliedMusicAgent:
 
     Workflow:
       1. validate input
-      2. parse natural language → UserProfile
-      3. retrieve candidate songs (RAG-style)
-      4. score and rank candidates
-      5. self-check output quality
-      6. return structured, human-readable results
+      2. retrieve knowledge snippets (RAG enhancement)
+      3. parse natural language → UserProfile
+      4. apply knowledge hints to augment profile
+      5. retrieve candidate songs (RAG-style)
+      6. score and rank candidates
+      7. self-check output quality
+      8. return structured, human-readable results
+
+    Optional parameters on run():
+      show_steps=True  — append an Agent Reasoning Trace to the output
+      style            — "default" | "professional" | "casual" | "technical"
     """
 
     def __init__(self, songs_path: Optional[str] = None):
@@ -112,7 +120,7 @@ class AppliedMusicAgent:
         logger.info(f"Agent ready — {len(self.songs)} songs in catalog.")
 
     # ------------------------------------------------------------------
-    # Step 2: Parse
+    # Step 3: Parse
     # ------------------------------------------------------------------
 
     def parse_request(self, raw_request: str) -> UserProfile:
@@ -166,7 +174,7 @@ class AppliedMusicAgent:
         return profile
 
     # ------------------------------------------------------------------
-    # Step 5: Self-check
+    # Step 7: Self-check
     # ------------------------------------------------------------------
 
     def self_check(
@@ -227,7 +235,7 @@ class AppliedMusicAgent:
         return flags
 
     # ------------------------------------------------------------------
-    # Step 6: Format
+    # Step 8: Format
     # ------------------------------------------------------------------
 
     def format_results(
@@ -235,6 +243,8 @@ class AppliedMusicAgent:
         recommendations: List[Recommendation],
         flags: List[str],
         retrieval_mode: str,
+        style: str = "default",
+        knowledge_note: Optional[str] = None,
     ) -> str:
         lines = ["=" * 70, "  MUSIC RECOMMENDATIONS", "=" * 70]
 
@@ -249,6 +259,8 @@ class AppliedMusicAgent:
             return "\n".join(lines)
 
         lines.append(f"  Retrieval mode: {retrieval_mode.upper()}")
+        if knowledge_note:
+            lines.append(f"  {knowledge_note}")
         lines.append("")
 
         for i, rec in enumerate(recommendations, start=1):
@@ -259,7 +271,8 @@ class AppliedMusicAgent:
             lines.append(
                 f"     Score: {rec.score:.4f}  |  Confidence: {rec.confidence.upper()}"
             )
-            lines.append(f"     Why: {rec.explanation}")
+            styled_explanation = apply_style(rec.explanation, style)
+            lines.append(f"     Why: {styled_explanation}")
             lines.append("")
 
         lines.append("=" * 70)
@@ -269,11 +282,25 @@ class AppliedMusicAgent:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def run(self, user_request: str) -> str:
+    def run(
+        self,
+        user_request: str,
+        show_steps: bool = False,
+        style: str = "default",
+    ) -> str:
         """
         Execute the full agentic workflow for a user request.
+
+        Args:
+            user_request: natural language music preference string
+            show_steps:   when True, appends a structured Agent Reasoning Trace
+            style:        output style — "default", "professional", "casual", "technical"
+
         Returns a formatted, human-readable recommendation string.
         """
+        style = validate_style(style)
+        trace: List[str] = []
+
         logger.info(f"--- New request: '{user_request}' ---")
 
         # 1. Validate
@@ -282,24 +309,95 @@ class AppliedMusicAgent:
             logger.warning(f"Rejected: {error_msg}")
             return f"[Input Error] {error_msg}"
 
-        # 2. Parse
+        if show_steps:
+            trace.append("1. Validation: PASSED")
+
+        # 2. Retrieve knowledge snippets
+        snippets, matched_entries = retrieve_snippets(user_request)
+
+        # 3. Parse
         profile = self.parse_request(user_request)
 
-        # 3. Retrieve
+        # 4. Apply knowledge hints (fills dimensions the parser left as None)
+        applied_hints = apply_knowledge_hints(profile, matched_entries)
+
+        if show_steps:
+            trace.append(
+                f"2. Parsed preferences — genre: {profile.preferred_genre}, "
+                f"mood: {profile.preferred_mood}, energy: {profile.target_energy}, "
+                f"decade: {profile.preferred_decade}, vague: {profile.is_vague}"
+            )
+            if snippets:
+                trace.append(f"3. Knowledge snippets: {len(snippets)} matched")
+                for s in snippets:
+                    trace.append(f"   - {s}")
+                if applied_hints:
+                    for h in applied_hints:
+                        trace.append(f"   + Applied: {h}")
+            else:
+                trace.append("3. Knowledge snippets: none matched")
+
+        # 5. Retrieve
         candidates, retrieval_mode = retrieve_candidates(profile, self.songs)
         logger.info(f"Retrieved {len(candidates)} candidates (mode: {retrieval_mode}).")
+
+        if show_steps:
+            trace.append(
+                f"4. Retrieval mode: {retrieval_mode.upper()}, "
+                f"candidates: {len(candidates)}"
+            )
+
         if not candidates:
             return "[Error] The song catalog is empty."
 
-        # 4. Score & rank
+        # 6. Score & rank
         recommendations = rank_songs(candidates, profile, top_k=5)
 
-        # 5. Self-check
+        if show_steps:
+            conf_summary = ", ".join(r.confidence.upper() for r in recommendations)
+            trace.append(
+                "5. Scoring strategy: weighted formula "
+                "(genre 30%, mood 30%, energy 20%, popularity 10%, decade 10%)"
+            )
+            trace.append(f"6. Confidence summary: [{conf_summary}]")
+
+        # 7. Self-check
         flags = self.self_check(recommendations, retrieval_mode, profile)
         for flag in flags:
             logger.warning(flag)
 
-        # 6. Format and return
-        result = self.format_results(recommendations, flags, retrieval_mode)
+        if show_steps:
+            if flags:
+                trace.append(f"7. Self-check: {len(flags)} warning(s)")
+                for f in flags:
+                    trace.append(f"   - {f}")
+            else:
+                trace.append("7. Self-check: no warnings")
+            top_score = recommendations[0].score if recommendations else 0.0
+            trace.append(
+                f"8. Decision: returning {len(recommendations)} recommendation(s), "
+                f"top score {top_score:.4f}"
+            )
+
+        # 8. Format and return
+        knowledge_note = None
+        if snippets:
+            names = "; ".join(s.split(":")[0] for s in snippets)
+            knowledge_note = f"Knowledge used: {names}"
+
+        result = self.format_results(
+            recommendations, flags, retrieval_mode,
+            style=style,
+            knowledge_note=knowledge_note,
+        )
+
+        if show_steps and trace:
+            trace_block = "\n".join(
+                ["", "=" * 70, "  AGENT REASONING TRACE", "=" * 70]
+                + [f"  {line}" for line in trace]
+                + ["=" * 70]
+            )
+            result = result + trace_block
+
         logger.info("Run complete.")
         return result

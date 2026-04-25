@@ -1,0 +1,74 @@
+[
+  {
+    "name": "nostalgic rock with high energy",
+    "input": "nostalgic rock with high energy",
+    "should_error": false,
+    "expected_retrieval_mode": "partial",
+    "expected_keyword": "MUSIC RECOMMENDATIONS",
+    "minimum_confidence": null,
+    "expect_fallback": false
+  },
+  {
+    "name": "calm music from the 2010s",
+    "input": "calm music from the 2010s",
+    "should_error": false,
+    "expected_retrieval_mode": "partial",
+    "expected_keyword": "Score:",
+    "minimum_confidence": "medium",
+    "expect_fallback": false
+  },
+  {
+    "name": "popular energetic pop",
+    "input": "popular energetic pop",
+    "should_error": false,
+    "expected_retrieval_mode": "partial",
+    "expected_keyword": "MUSIC RECOMMENDATIONS",
+    "minimum_confidence": null,
+    "expect_fallback": false
+  },
+  {
+    "name": "workout music",
+    "input": "workout music",
+    "should_error": false,
+    "expected_retrieval_mode": "partial",
+    "expected_keyword": "Score:",
+    "minimum_confidence": null,
+    "expect_fallback": false
+  },
+  {
+    "name": "focus music",
+    "input": "focus music",
+    "should_error": false,
+    "expected_retrieval_mode": "partial",
+    "expected_keyword": "Score:",
+    "minimum_confidence": null,
+    "expect_fallback": false
+  },
+  {
+    "name": "vague dragoncore spaceship request",
+    "input": "dragoncore spaceship music",
+    "should_error": false,
+    "expected_retrieval_mode": "fallback",
+    "expected_keyword": "MUSIC RECOMMENDATIONS",
+    "minimum_confidence": null,
+    "expect_fallback": true
+  },
+  {
+    "name": "empty input",
+    "input": "",
+    "should_error": true,
+    "expected_retrieval_mode": null,
+    "expected_keyword": "Error",
+    "minimum_confidence": null,
+    "expect_fallback": false
+  },
+  {
+    "name": "latin genre only request",
+    "input": "latin music",
+    "should_error": false,
+    "expected_retrieval_mode": "fallback",
+    "expected_keyword": "Score:",
+    "minimum_confidence": null,
+    "expect_fallback": true
+  }
+]

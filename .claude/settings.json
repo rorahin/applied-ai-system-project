@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(python3 -m pytest --co -q)",
-      "Bash(python3 -m pytest -q)"
+      "Bash(python3 -m pytest -q)",
+      "Bash(git push *)",
+      "Bash(python3 tests/run_tests.py)",
+      "Bash(python3 evaluation/run_evaluation.py)",
+      "Bash(git add *)"
     ]
   }
 }

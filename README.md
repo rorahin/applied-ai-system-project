@@ -289,6 +289,150 @@ python3 tests/run_tests.py
 
 ---
 
+## Optional Stretch Features
+
+Four optional features were implemented to extend the system beyond the baseline requirements.
+
+---
+
+### 1. RAG Enhancement
+
+**New files:** `docs/music_knowledge_base.md`, `src/knowledge_retrieval.py`
+
+The knowledge base is a structured markdown document containing 8 domain-knowledge entries
+(workout, focus, party, sleep, nostalgic, road trip, meditation, morning). Each entry defines:
+
+- trigger keywords
+- suggested energy level, mood, and decade
+- a plain-language note explaining the mapping
+
+`knowledge_retrieval.py` loads the knowledge base at query time, matches entries against the
+user request by keyword, and calls `apply_knowledge_hints()` to fill in preference dimensions
+the keyword parser could not extract. Hints only apply to dimensions the parser left as `None` —
+they never overwrite a parser result.
+
+**Practical effect:**
+
+- `"focus music"` — "focus" is not in the parser's keyword tables, so the profile would normally
+  be vague and fall back to full-catalog ranking. The knowledge base adds `mood=focused` and
+  `target_energy=0.45`, making the request non-vague and enabling partial retrieval.
+- `"workout music"` — the parser already sets `mood=intense`, but the knowledge base adds
+  `target_energy=0.90`, improving energy-dimension scoring for high-intensity songs.
+- A `Knowledge used: <entry>` line appears in every output where knowledge was applied.
+
+---
+
+### 2. Agentic Workflow Enhancement
+
+**Modified:** `src/agent.py`, `main.py`
+
+`AppliedMusicAgent.run()` accepts an optional `show_steps=True` parameter. When enabled, a
+structured **Agent Reasoning Trace** is appended to the output showing eight numbered steps:
+
+1. Validation result
+2. Parsed preferences (genre, mood, energy, decade, vague flag)
+3. Knowledge snippets matched and hints applied
+4. Retrieval mode and candidate count
+5. Scoring strategy (weights per dimension)
+6. Confidence summary across all results
+7. Self-check warnings
+8. Final decision (result count and top score)
+
+This is an observable engineering trace — it shows what the agent actually did at each pipeline
+step, not private chain-of-thought reasoning. `show_steps=False` (the default) leaves output
+completely unchanged, so all existing tests pass without modification.
+
+`main.py` prompts the user to enable steps and select a style before running.
+
+---
+
+### 3. Specialization Simulation
+
+**New file:** `src/specialization.py`
+
+Four output styles simulate how a specialized model might present the same underlying data with
+a different tone. Style is applied only to the "Why" explanation line — scores, songs, and
+confidence labels remain identical across all styles.
+
+- `default` — original pipe-separated format, unchanged
+- `professional` — semicolons as separators, formal phrasing
+- `casual` — friendlier language ("genre fits", "vibe is a bit off")
+- `technical` — adds weight annotations per dimension (`[w=0.30]`, `[w=0.20]`)
+
+Invalid style values fall back to `default` without raising an error.
+
+This is documented as fine-tuning/specialization simulation using constrained style templates —
+the same technique used to simulate persona-specific output without training a separate model.
+
+---
+
+### 4. Evaluation Harness
+
+**New files:** `evaluation/eval_cases.json`, `evaluation/run_evaluation.py`
+
+`eval_cases.json` defines 8 predefined test inputs covering the expected behavior range:
+
+- `nostalgic rock with high energy` — partial retrieval
+- `calm music from the 2010s` — partial retrieval
+- `popular energetic pop` — partial retrieval
+- `workout music` — partial retrieval (knowledge augments energy)
+- `focus music` — partial retrieval (knowledge sets mood=focused)
+- `dragoncore spaceship music` — fallback (unrecognized)
+- `""` (empty input) — error
+- `latin music` — fallback (unsupported genre)
+
+Each case specifies: `should_error`, `expected_retrieval_mode`, `expected_keyword`,
+`minimum_confidence`, and `expect_fallback`.
+
+`run_evaluation.py` loads the cases, runs the agent on each input, checks all expectations,
+and prints a summary:
+
+```bash
+python3 evaluation/run_evaluation.py
+```
+
+Example output:
+
+```text
+EVALUATION RESULTS
+----------------------------------------
+Total Cases    : 8
+Passed         : 8
+Failed         : 0
+Fallback Cases : 2
+Avg Confidence : 0.5863
+----------------------------------------
+Status         : PASS
+```
+
+---
+
+### Stretch Feature Summary
+
+- **RAG Enhancement** — `docs/music_knowledge_base.md` loads; "focus music" and "workout music"
+  use partial retrieval (not fallback) due to knowledge augmentation
+- **Agentic Workflow Enhancement** — `show_steps=True` appends an 8-step Agent Reasoning Trace;
+  `show_steps=False` output is unchanged
+- **Specialization Simulation** — `technical` output contains `[w=0.30]`; `professional` uses
+  semicolons; `casual` uses friendlier language; scores are identical across all styles
+- **Evaluation Harness** — `python3 evaluation/run_evaluation.py` reports 8/8 PASS
+
+All 182 tests pass (139 original + 43 stretch feature tests).
+
+**Test suite — 182/182 passed:**
+
+![182 out of 182 tests passed](assets/optional-1.png)
+
+**Evaluation harness — 8/8 cases passed:**
+
+![Evaluation harness output showing 8/8 PASS](assets/optional-2.png)
+
+**Agent Reasoning Trace with technical style (workout music):**
+
+![Agent Reasoning Trace and technical style output](assets/optional-3.png)
+
+---
+
 ## Reliability and Evaluation
 
 This section documents how the system proves it works — through automated tests, transparent
