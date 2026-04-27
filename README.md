@@ -707,3 +707,31 @@ reflected internal class names rather than user-facing pipeline steps. The diagr
 but unreadable at the size it would appear in a README. It had to be redrawn as a simpler
 high-level flow that matched what someone reading the project for the first time actually needs
 to understand.
+
+---
+
+## Presentation and Portfolio
+
+### GitHub Repository
+
+[GitHub Repository](PASTE_YOUR_LINK_HERE)
+
+### About This Project
+
+This project demonstrates that I can design and deliver a complete applied AI system — not just
+a script that produces output, but a pipeline with clearly separated stages, transparent
+reasoning, and a test suite that verifies behavior at every layer. I approached the problem the
+way a working engineer would: define the system boundary first, build guardrails before core
+logic, make the scoring formula inspectable rather than opaque, and write tests that document
+expected behavior rather than just check for crashes. The result is a system that knows when it
+does not know — it surfaces low confidence, fallback mode, and catalog limitations explicitly
+rather than hiding uncertainty behind plausible-looking output. That combination of structured
+thinking, reliability engineering, and explainability-by-design is what I want this project to
+say about how I build AI systems.
+
+### Video Walkthrough
+
+[Loom Video Link](PASTE_LOOM_LINK_HERE)
+
+This video demonstrates the system running end-to-end, including recommendation behavior, agent
+reasoning, and reliability features.
