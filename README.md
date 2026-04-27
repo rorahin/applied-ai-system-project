@@ -714,7 +714,7 @@ to understand.
 
 ### GitHub Repository
 
-[GitHub Repository](PASTE_YOUR_LINK_HERE)
+[GitHub Repository](https://github.com/rorahin/applied-ai-system-project)
 
 ### About This Project
 
