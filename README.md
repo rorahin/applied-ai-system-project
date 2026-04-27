@@ -731,7 +731,7 @@ say about how I build AI systems.
 
 ### Video Walkthrough
 
-[Loom Video Link](PASTE_LOOM_LINK_HERE)
+[Loom Video Link](https://www.loom.com/share/af982f88b1a845cb8f67cb4be1cd77df)
 
 This video demonstrates the system running end-to-end, including recommendation behavior, agent
 reasoning, and reliability features.
