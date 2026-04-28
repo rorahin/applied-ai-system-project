@@ -211,10 +211,10 @@ class AppliedMusicAgent:
 
         if retrieval_mode == "fallback":
             if profile.is_vague:
-                flags.append("NOTE: Request was vague — showing a diverse fallback selection.")
+                flags.append("IMPORTANT NOTE: Request was vague — showing a diverse fallback selection.")
             else:
                 flags.append(
-                    "NOTE: No catalog songs matched your preferences — "
+                    "IMPORTANT NOTE: No catalog songs matched your preferences — "
                     "showing fallback recommendations."
                 )
 
@@ -222,14 +222,14 @@ class AppliedMusicAgent:
             r.song.genre == profile.preferred_genre for r in recommendations
         ):
             flags.append(
-                f"NOTE: Genre '{profile.preferred_genre}' is not represented in top results."
+                f"IMPORTANT NOTE: Genre '{profile.preferred_genre}' is not represented in top results."
             )
 
         if profile.preferred_mood and not any(
             r.song.mood == profile.preferred_mood for r in recommendations
         ):
             flags.append(
-                f"NOTE: Mood '{profile.preferred_mood}' is not represented in top results."
+                f"IMPORTANT NOTE: Mood '{profile.preferred_mood}' is not represented in top results."
             )
 
         return flags
@@ -250,7 +250,13 @@ class AppliedMusicAgent:
 
         if flags:
             for flag in flags:
-                lines.append(f"  {flag}")
+                if flag.startswith("IMPORTANT NOTE:"):
+                    lines.append("")
+                    lines.append("  " + "!" * 66)
+                    lines.append(f"  !!!  {flag}  !!!")
+                    lines.append("  " + "!" * 66)
+                else:
+                    lines.append(f"  {flag}")
             lines.append("")
 
         if not recommendations:
